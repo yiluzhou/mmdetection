@@ -8,9 +8,15 @@ import sys
 import warnings
 from setuptools import find_packages, setup
 
-import torch
-from torch.utils.cpp_extension import (BuildExtension, CppExtension,
-                                       CUDAExtension)
+try:
+    import torch
+    from torch.utils.cpp_extension import (BuildExtension, CppExtension,
+                                           CUDAExtension)
+except ModuleNotFoundError:
+    torch = None
+    BuildExtension = None
+    CppExtension = None
+    CUDAExtension = None
 
 
 def readme():
@@ -23,12 +29,18 @@ version_file = 'mmdet/version.py'
 
 
 def get_version():
+    version = {}
     with open(version_file, 'r') as f:
-        exec(compile(f.read(), version_file, 'exec'))
-    return locals()['__version__']
+        exec(compile(f.read(), version_file, 'exec'), version)
+    return version['__version__']
 
 
 def make_cuda_ext(name, module, sources, sources_cuda=[]):
+    if torch is None:
+        raise RuntimeError(
+            'torch is required to build CUDA/C++ extensions. '
+            'Install torch before building mmdet.'
+        )
 
     define_macros = []
     extra_compile_args = {'cxx': []}
@@ -140,7 +152,8 @@ def add_mim_extension():
     """
 
     # parse installment mode
-    if 'develop' in sys.argv:
+    if ('develop' in sys.argv or 'editable_wheel' in sys.argv
+            or 'build_editable' in sys.argv):
         # installed by `pip install -e .`
         if platform.system() == 'Windows':
             # set `copy` mode here since symlink fails on Windows.
@@ -187,6 +200,9 @@ def add_mim_extension():
 
 if __name__ == '__main__':
     add_mim_extension()
+    cmdclass = {}
+    if BuildExtension is not None:
+        cmdclass['build_ext'] = BuildExtension
     setup(
         name='mmdet',
         version=get_version(),
@@ -220,5 +236,5 @@ if __name__ == '__main__':
             'multimodal': parse_requirements('requirements/multimodal.txt'),
         },
         ext_modules=[],
-        cmdclass={'build_ext': BuildExtension},
+        cmdclass=cmdclass,
         zip_safe=False)
